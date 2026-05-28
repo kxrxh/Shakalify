@@ -10,7 +10,6 @@ const TILE_H = 156;
 const MASCOT_H = 100;
 
 export type MeterPreviewTile = {
-	/** Slider value (0–100) when this tile is clicked. */
 	intensity: number;
 	stage: number;
 	src: string;

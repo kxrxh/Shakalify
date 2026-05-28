@@ -14,7 +14,6 @@ export const DEFAULT_EFFECTS: EffectOptions = {
 	scanlines: false,
 };
 
-/** Maps slider 0–100 to color levels (0 = off, 100 ≈ 3 levels). */
 export function getPosterizeSteps(amount: number): number {
 	if (amount <= 0) return 0;
 	const t = Math.min(POSTERIZE_MAX, Math.max(0, amount)) / POSTERIZE_MAX;

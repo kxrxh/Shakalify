@@ -55,13 +55,11 @@ export type ShakalOptions = {
 
 export const INTENSITY_MIN = 0;
 export const INTENSITY_MAX = 100;
-/** Slider 100% caps at the strength that was previously at 75%. */
 export const INTENSITY_PROCESS_FULL_AT = 75;
 export const DEFAULT_INTENSITY = 67;
 
 export const LEGACY_METER_STAGES = 9;
 
-/** Maps old 1–9 stage buttons to 0–100 slider values. */
 export function legacyStageToIntensity(stage: number): number {
 	const level = Math.min(LEGACY_METER_STAGES, Math.max(1, Math.round(stage)));
 	return ((level - 1) / (LEGACY_METER_STAGES - 1)) * INTENSITY_MAX;
@@ -83,7 +81,6 @@ export function normalizeIntensity(level: number): number {
 	return Math.min(INTENSITY_MAX, Math.max(INTENSITY_MIN, level));
 }
 
-/** Maps UI slider 0–100 → internal 0–75 for live processing. */
 export function toProcessIntensity(sliderValue: number): number {
 	const v = normalizeIntensity(sliderValue);
 	if (v <= 0) return 0;
@@ -101,7 +98,6 @@ export type ShakalMode = "meter" | "process" | "meter-legacy";
 const LEGACY_METER_SCALE = 0.5;
 const LEGACY_METER_CURVE_EXP = 1.44;
 
-/** Original 1–9 meter previews (visual only). */
 export function getLegacyMeterIntensityParams(stage: number) {
 	const level = Math.min(LEGACY_METER_STAGES, Math.max(1, Math.round(stage)));
 
@@ -121,7 +117,6 @@ export function getLegacyMeterIntensityParams(stage: number) {
 	};
 }
 
-/** <1 lifts mid slider values (50% hits harder than linear 0.5). */
 const INTENSITY_GAMMA = 0.58;
 const INTENSITY_CURVE_EXP = 1.28;
 const METER_INTENSITY_SCALE = 0.68;
@@ -143,7 +138,6 @@ function toIntensityT(
 	return Math.min(1, tBase * scale);
 }
 
-/** 0.44 on tiny images → 1.0 at ~1000px short edge */
 export function getResolutionFactor(minDimension: number): number {
 	if (minDimension >= RES_REF_MIN_DIM) return 1;
 	if (minDimension <= RES_FLOOR_MIN_DIM) return 0.44;

@@ -4,7 +4,6 @@
 	flex-direction: column;
 }
 
-/* Header */
 .header {
 	padding: 2rem 1.5rem 1.25rem;
 }
@@ -70,7 +69,6 @@
 	color: var(--text);
 }
 
-/* Main */
 .main {
 	flex: 1;
 	padding: 0 1.5rem 2rem;
@@ -86,7 +84,6 @@
 	overflow: hidden;
 }
 
-/* Dropzone */
 .dropzone {
 	display: flex;
 	flex-direction: column;
@@ -139,7 +136,6 @@
 	color: var(--text-dim);
 }
 
-/* Buttons */
 .btn {
 	border: none;
 	border-radius: var(--radius-sm);
@@ -185,7 +181,6 @@
 	color: var(--text-bright);
 }
 
-/* Workspace */
 .workspace {
 	padding: 1.25rem;
 	display: flex;
@@ -374,7 +369,6 @@
 	line-height: 1.4;
 }
 
-/* Controls */
 .controls {
 	background: var(--bg-soft);
 	border: 1px solid var(--border);
@@ -385,7 +379,6 @@
 	gap: 1rem;
 }
 
-/* Shakal meter */
 .meter {
 	display: flex;
 	flex-direction: column;
@@ -594,7 +587,6 @@
 	}
 }
 
-/* Effects panel */
 .effects-panel {
 	display: flex;
 	flex-direction: column;
@@ -789,7 +781,6 @@
 	color: var(--teal);
 }
 
-/* Compare slider */
 .compare {
 	display: flex;
 	flex-direction: column;
@@ -845,7 +836,6 @@
 	gap: 0.5rem;
 }
 
-/* Stats */
 .stats {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
@@ -879,7 +869,6 @@
 	line-height: 1.3;
 }
 
-/* Footer */
 .footer {
 	text-align: center;
 	padding: 1.5rem;
@@ -901,7 +890,6 @@
 	margin-bottom: 0.15rem;
 }
 
-/* Responsive */
 @media (max-width: 640px) {
 	.header-inner {
 		flex-direction: column;
