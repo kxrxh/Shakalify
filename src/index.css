@@ -1,0 +1,75 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
+
+:root {
+	--bg: #0c0e12;
+	--bg-panel: #141820;
+	--bg-soft: #1a1f28;
+	--text: #b4bcc8;
+	--text-dim: #6b7380;
+	--text-bright: #eef1f5;
+	--accent: #e85d04;
+	--accent-soft: rgba(232, 93, 4, 0.12);
+	--teal: #5ec4b6;
+	--teal-soft: rgba(94, 196, 182, 0.12);
+	--border: #252b36;
+	--border-strong: #323a48;
+	--radius: 14px;
+	--radius-sm: 10px;
+	--shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+	--sans: "Manrope", system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	margin: 0;
+	min-height: 100svh;
+	background:
+		radial-gradient(
+			ellipse 80% 50% at 50% -20%,
+			rgba(94, 196, 182, 0.08),
+			transparent
+		),
+		var(--bg);
+	color: var(--text);
+	font-family: var(--sans);
+	-webkit-font-smoothing: antialiased;
+}
+
+#root {
+	min-height: 100svh;
+	width: 100%;
+}
+
+h1,
+p {
+	margin: 0;
+}
+
+button {
+	font-family: inherit;
+	cursor: pointer;
+}
+
+button:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
+img {
+	display: block;
+	max-width: 100%;
+}
+
+.mascot {
+	image-rendering: pixelated;
+	user-select: none;
+}
