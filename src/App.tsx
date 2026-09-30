@@ -1,68 +1,73 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import shakalPng from "./assets/shakal.png";
+import { DegradationControls } from "./components/DegradationControls";
 import { EffectsPanel } from "./components/EffectsPanel";
 import { DEFAULT_EFFECTS, type EffectOptions } from "./lib/effects";
 import {
 	generateMeterPreviews,
-	nearestMeterPreviewIntensity,
+	type MeterPreviewTile,
 } from "./lib/meterPreviews";
 import {
 	DEFAULT_INTENSITY,
-	formatBytes,
 	formatIntensityLabel,
+	getIntensitySettings,
+	intensityToMeterStage,
 	INTENSITY_MAX,
-	INTENSITY_MIN,
-	LEGACY_METER_STAGES,
-	type ShakalStats,
-	shakalify,
-} from "./lib/shakalify";
+	METER_STAGES,
+	meterStageToIntensity,
+	type DegradationSettings,
+} from "./lib/processing";
+import { formatBytes, shakalify, type ShakalStats } from "./lib/shakalify";
 import "./App.css";
-
-const SHAKAL = shakalPng;
-const LIVE_DEBOUNCE_MS = 280;
-
+const SHAKAL = shakalPng,
+	LIVE_DEBOUNCE_MS = 280;
+const STAGES = Array.from({ length: METER_STAGES }, (_, index) => ({
+	stage: index + 1,
+	intensity: meterStageToIntensity(index + 1),
+}));
 function ShakalMeter({
 	value,
+	manual,
 	onChange,
-	disabled,
 }: {
 	value: number;
+	manual: boolean;
 	onChange: (intensity: number) => void;
-	disabled?: boolean;
 }) {
-	const [previews, setPreviews] = useState<Awaited<
-		ReturnType<typeof generateMeterPreviews>
-	> | null>(null);
-	const activePreview = nearestMeterPreviewIntensity(value);
-	const fill = (value / INTENSITY_MAX) * 100;
-
+	const [previews, setPreviews] = useState<MeterPreviewTile[] | null>(null);
 	useEffect(() => {
 		let cancelled = false;
-		generateMeterPreviews(SHAKAL).then((tiles) => {
-			if (!cancelled) setPreviews(tiles);
-		});
+		generateMeterPreviews(SHAKAL)
+			.then((tiles) => {
+				if (!cancelled) setPreviews(tiles);
+			})
+			.catch(() => {
+				/* Numeric stage buttons remain available. */
+			});
 		return () => {
 			cancelled = true;
 		};
 	}, []);
-
+	const activeStage = intensityToMeterStage(value);
 	return (
 		<div className="meter">
 			<div className="meter-header">
 				<span className="meter-label">Степень шакалинга</span>
-				<span className="meter-value">{formatIntensityLabel(value)}</span>
+				<span className="meter-value">
+					{manual ? "Вручную" : formatIntensityLabel(value)}
+				</span>
 			</div>
 			<input
 				type="range"
 				className="meter-slider posterize-slider"
-				min={INTENSITY_MIN}
+				min={0}
 				max={INTENSITY_MAX}
 				step={1}
 				value={value}
 				onChange={(e) => onChange(Number(e.target.value))}
-				disabled={disabled}
-				style={{ "--fill": `${fill}%` } as React.CSSProperties}
+				style={{ "--fill": `${value}%` } as React.CSSProperties}
 				aria-label="Степень шакалинга"
+				aria-valuetext={formatIntensityLabel(value)}
 			/>
 			<div className="meter-labels" aria-hidden="true">
 				<span>0</span>
@@ -72,37 +77,26 @@ function ShakalMeter({
 				className="meter-grid"
 				aria-label="Быстрый выбор степени шакалинга"
 			>
-				{previews
-					? previews.map(({ intensity, stage, src }) => (
-							<button
-								type="button"
-								key={stage}
-								className={`meter-tile ${activePreview === intensity ? "meter-tile--active" : ""}`}
-								onClick={() => onChange(intensity)}
-								disabled={disabled}
-								aria-label={
-									stage === 1
-										? "Оригинал"
-										: `Уровень ${stage} (${Math.round(intensity)}%)`
-								}
-								aria-pressed={activePreview === intensity}
-							>
-								<img src={src} alt="" draggable={false} />
-							</button>
-						))
-					: Array.from({ length: LEGACY_METER_STAGES }, (_, i) => i + 1).map(
-							(stage) => (
-								<div
-									key={`meter-skeleton-${stage}`}
-									className="meter-tile meter-tile--skeleton"
-								/>
-							),
+				{STAGES.map(({ stage, intensity }) => (
+					<button
+						key={stage}
+						type="button"
+						className={`meter-tile ${!manual && activeStage === stage ? "meter-tile--active" : ""}`}
+						onClick={() => onChange(intensity)}
+						aria-label={`Уровень ${stage} (${formatIntensityLabel(intensity)})`}
+						aria-pressed={!manual && activeStage === stage}
+					>
+						{previews ? (
+							<img src={previews[stage - 1].src} alt="" draggable={false} />
+						) : (
+							<span className="meter-tile__fallback">{stage}</span>
 						)}
+					</button>
+				))}
 			</fieldset>
 		</div>
 	);
 }
-
 function ShakalMascot({
 	className,
 	alt = "Шакал",
@@ -112,7 +106,6 @@ function ShakalMascot({
 }) {
 	return <img src={SHAKAL} alt={alt} className={className} draggable={false} />;
 }
-
 function ComparePreview({
 	originalUrl,
 	resultUrl,
@@ -121,7 +114,6 @@ function ComparePreview({
 	resultUrl: string;
 }) {
 	const [position, setPosition] = useState(50);
-
 	return (
 		<div className="compare">
 			<div className="compare__frame">
@@ -154,153 +146,139 @@ function ComparePreview({
 		</div>
 	);
 }
-
+type Result = { url: string; blob: Blob; stats: ShakalStats };
+type Outcome = { file: File; key: string; result?: Result; error?: string };
 function App() {
 	const [file, setFile] = useState<File | null>(null);
 	const [originalUrl, setOriginalUrl] = useState<string | null>(null);
-	const [resultUrl, setResultUrl] = useState<string | null>(null);
 	const [intensity, setIntensity] = useState(DEFAULT_INTENSITY);
+	const [manualSettings, setManualSettings] =
+		useState<DegradationSettings | null>(null);
 	const [effects, setEffects] = useState<EffectOptions>(DEFAULT_EFFECTS);
-	const [pixelScale, setPixelScale] = useState(1);
-	const [exportPng, setExportPng] = useState(false);
-	const [compareMode, setCompareMode] = useState(false);
-	const [completedProcessKey, setCompletedProcessKey] = useState<string | null>(
-		null,
+	const [pixelScale, setPixelScale] = useState(1),
+		[exportPng, setExportPng] = useState(false);
+	const [compareMode, setCompareMode] = useState(false),
+		[dragOver, setDragOver] = useState(false);
+	const [outcome, setOutcome] = useState<Outcome | null>(null);
+	const [importError, setImportError] = useState<string | null>(null),
+		[retry, setRetry] = useState(0);
+	const inputRef = useRef<HTMLInputElement>(null);
+	const originalRef = useRef<string | null>(null),
+		resultRef = useRef<string | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
+	const settings = useMemo(
+		() => manualSettings ?? getIntensitySettings(intensity),
+		[manualSettings, intensity],
 	);
-	const [stats, setStats] = useState<ShakalStats | null>(null);
-	const [resultSize, setResultSize] = useState<number | null>(null);
-	const [dragOver, setDragOver] = useState(false);
-	const resultUrlRef = useRef<string | null>(null);
-	const processVersionRef = useRef(0);
-
-	const processKey = useMemo(() => {
-		if (!file) return null;
-		return JSON.stringify({
-			name: file.name,
-			size: file.size,
-			lastModified: file.lastModified,
-			intensity,
-			effects,
-			pixelScale,
-			exportPng,
-		});
-	}, [file, intensity, effects, pixelScale, exportPng]);
-
-	const isProcessing =
-		processKey !== null && processKey !== completedProcessKey;
-
-	const revokeResult = useCallback(() => {
-		if (resultUrlRef.current) {
-			URL.revokeObjectURL(resultUrlRef.current);
-			resultUrlRef.current = null;
-		}
-	}, []);
-
-	useEffect(() => {
-		return () => {
-			if (originalUrl) URL.revokeObjectURL(originalUrl);
-			revokeResult();
-		};
-	}, [originalUrl, revokeResult]);
-
-	useEffect(() => {
-		if (!file || !processKey) return;
-
-		const version = ++processVersionRef.current;
-		const keyAtStart = processKey;
-
-		const timer = setTimeout(async () => {
-			try {
-				const {
-					blob,
-					previewUrl,
-					stats: s,
-				} = await shakalify(file, intensity, {
-					effects,
-					pixelScale,
-					exportPng,
-				});
-				if (version !== processVersionRef.current) return;
-
-				revokeResult();
-				resultUrlRef.current = previewUrl;
-				setResultUrl(previewUrl);
-				setStats(s);
-				setResultSize(blob.size);
-			} catch {
-				if (version === processVersionRef.current) {
-					revokeResult();
-					setResultUrl(null);
-					setStats(null);
-					setResultSize(null);
-				}
-			} finally {
-				if (version === processVersionRef.current) {
-					setCompletedProcessKey(keyAtStart);
-				}
-			}
-		}, LIVE_DEBOUNCE_MS);
-
-		return () => clearTimeout(timer);
-	}, [
-		file,
-		processKey,
+	const processKey = JSON.stringify({
 		intensity,
+		settings,
 		effects,
 		pixelScale,
 		exportPng,
-		revokeResult,
-	]);
-
-	const handleFile = useCallback(
-		(incoming: File) => {
-			if (!incoming.type.startsWith("image/")) return;
-
-			revokeResult();
-			setResultUrl(null);
-			setStats(null);
-			setResultSize(null);
-			setCompareMode(false);
-
-			if (originalUrl) URL.revokeObjectURL(originalUrl);
-			setFile(incoming);
-			setOriginalUrl(URL.createObjectURL(incoming));
+		retry,
+	});
+	const activeOutcome = outcome?.file === file ? outcome : null;
+	const isProcessing = file !== null && activeOutcome?.key !== processKey;
+	const result = activeOutcome?.result ?? null;
+	const error = importError ?? (!isProcessing ? activeOutcome?.error : null);
+	useEffect(
+		() => () => {
+			abortRef.current?.abort();
+			if (originalRef.current) URL.revokeObjectURL(originalRef.current);
+			if (resultRef.current) URL.revokeObjectURL(resultRef.current);
 		},
-		[originalUrl, revokeResult],
+		[],
 	);
-
-	const onDrop = useCallback(
-		(e: React.DragEvent) => {
-			e.preventDefault();
-			setDragOver(false);
-			const dropped = e.dataTransfer.files[0];
-			if (dropped) handleFile(dropped);
-		},
-		[handleFile],
-	);
-
+	useEffect(() => {
+		if (!file) return;
+		const controller = new AbortController();
+		abortRef.current = controller;
+		const timer = setTimeout(async () => {
+			try {
+				const processed = await shakalify(file, intensity, {
+					settings,
+					effects,
+					pixelScale,
+					exportPng,
+					signal: controller.signal,
+				});
+				if (controller.signal.aborted) return;
+				// Only accepted jobs allocate a preview URL. Aborted jobs return no URL.
+				const url = URL.createObjectURL(processed.blob);
+				if (resultRef.current) URL.revokeObjectURL(resultRef.current);
+				resultRef.current = url;
+				setOutcome({ file, key: processKey, result: { ...processed, url } });
+			} catch (caught) {
+				if (controller.signal.aborted) return;
+				if (resultRef.current) URL.revokeObjectURL(resultRef.current);
+				resultRef.current = null;
+				setOutcome({
+					file,
+					key: processKey,
+					error:
+						caught instanceof Error
+							? caught.message
+							: "Не удалось обработать изображение. Попробуй ещё раз.",
+				});
+			}
+		}, LIVE_DEBOUNCE_MS);
+		return () => {
+			clearTimeout(timer);
+			controller.abort();
+		};
+	}, [file, processKey, intensity, settings, effects, pixelScale, exportPng]);
+	const handleFile = (incoming: File) => {
+		if (incoming.size === 0) {
+			setImportError("Файл пуст. Выбери другое изображение.");
+			return;
+		}
+		if (
+			!incoming.type.startsWith("image/") &&
+			!(
+				incoming.type === "" &&
+				/\.(jpe?g|png|gif|webp|avif|bmp)$/i.test(incoming.name)
+			)
+		) {
+			setImportError("Выбери изображение: JPG, PNG, GIF или WEBP.");
+			return;
+		}
+		abortRef.current?.abort();
+		if (resultRef.current) URL.revokeObjectURL(resultRef.current);
+		resultRef.current = null;
+		if (originalRef.current) URL.revokeObjectURL(originalRef.current);
+		const url = URL.createObjectURL(incoming);
+		originalRef.current = url;
+		setFile(incoming);
+		setOriginalUrl(url);
+		setOutcome(null);
+		setImportError(null);
+		setCompareMode(false);
+	};
+	const changeIntensity = (value: number) => {
+		setIntensity(value);
+		setManualSettings(null);
+	};
 	const download = () => {
-		if (!resultUrl || !file) return;
-		const ext = exportPng ? "png" : "jpg";
+		if (!result || !file || isProcessing) return;
 		const a = document.createElement("a");
-		a.href = resultUrl;
-		a.download = `shakal_${file.name.replace(/\.[^.]+$/, "")}.${ext}`;
+		a.href = result.url;
+		a.download = `shakal_${file.name.replace(/\.[^.]+$/, "")}.${result.blob.type === "image/png" ? "png" : "jpg"}`;
 		a.click();
 	};
-
 	const reset = () => {
-		processVersionRef.current++;
-		revokeResult();
-		if (originalUrl) URL.revokeObjectURL(originalUrl);
+		abortRef.current?.abort();
+		if (resultRef.current) URL.revokeObjectURL(resultRef.current);
+		resultRef.current = null;
+		if (originalRef.current) URL.revokeObjectURL(originalRef.current);
+		originalRef.current = null;
 		setFile(null);
 		setOriginalUrl(null);
-		setResultUrl(null);
-		setStats(null);
-		setResultSize(null);
+		setOutcome(null);
+		setImportError(null);
 		setCompareMode(false);
-		setCompletedProcessKey(null);
+		setDragOver(false);
 	};
-
 	return (
 		<div className="app">
 			<header className="header">
@@ -308,45 +286,53 @@ function App() {
 					<ShakalMascot className="header-mascot" alt="" />
 					<div className="header-text">
 						<h1 className="title">
-							ШАКАЛИФАЙ
-							<span className="title-sub">shakalify</span>
+							ШАКАЛИФАЙ<span className="title-sub">shakalify</span>
 						</h1>
 					</div>
 				</div>
 			</header>
-
 			<main className="main">
 				<section className="panel">
+					<input
+						ref={inputRef}
+						type="file"
+						accept="image/*"
+						hidden
+						onChange={(e) => {
+							const incoming = e.target.files?.[0];
+							e.target.value = "";
+							if (incoming) handleFile(incoming);
+						}}
+					/>
 					{!file ? (
-						<label
+						<button
+							type="button"
 							className={`dropzone ${dragOver ? "dropzone--active" : ""}`}
+							aria-label="Выбрать файл"
+							onClick={() => inputRef.current?.click()}
 							onDragOver={(e) => {
 								e.preventDefault();
 								setDragOver(true);
 							}}
 							onDragLeave={() => setDragOver(false)}
-							onDrop={onDrop}
+							onDrop={(e) => {
+								e.preventDefault();
+								setDragOver(false);
+								const dropped = e.dataTransfer.files[0];
+								if (dropped) handleFile(dropped);
+							}}
 						>
 							<ShakalMascot className="dropzone-mascot" alt="" />
-							<p className="dropzone-title">Перетащи изображение сюда</p>
-							<p className="dropzone-hint">JPG · PNG · GIF · WEBP</p>
+							<span className="dropzone-title">Перетащи изображение сюда</span>
+							<span className="dropzone-hint">JPG · PNG · GIF · WEBP</span>
 							<span className="btn btn--primary">Выбрать файл</span>
-							<input
-								type="file"
-								accept="image/*"
-								hidden
-								onChange={(e) => {
-									const f = e.target.files?.[0];
-									if (f) handleFile(f);
-								}}
-							/>
-						</label>
+						</button>
 					) : (
 						<div className="workspace">
-							{compareMode && resultUrl && originalUrl ? (
+							{compareMode && result && originalUrl ? (
 								<ComparePreview
 									originalUrl={originalUrl}
-									resultUrl={resultUrl}
+									resultUrl={result.url}
 								/>
 							) : (
 								<div className="preview-grid">
@@ -365,23 +351,28 @@ function App() {
 											)}
 										</div>
 									</div>
-
 									<div className="preview-divider" aria-hidden="true">
 										<ShakalMascot className="preview-divider-mascot" alt="" />
 									</div>
-
 									<div className="preview-card">
 										<div className="preview-label">
 											<span>ПОСЛЕ</span>
 											<span className="tag tag--shakal">
-												{isProcessing ? "обновляем…" : "результат"}
+												{isProcessing
+													? "обновляем…"
+													: error
+														? "ошибка"
+														: "результат"}
 											</span>
 										</div>
-										<div className="preview-frame preview-frame--shakal preview-frame--live">
-											{resultUrl ? (
+										<div
+											className="preview-frame preview-frame--shakal preview-frame--live"
+											aria-busy={isProcessing}
+										>
+											{result ? (
 												<>
 													<img
-														src={resultUrl}
+														src={result.url}
 														alt="Результат"
 														className="preview-img preview-img--shakal"
 													/>
@@ -392,24 +383,39 @@ function App() {
 														/>
 													)}
 												</>
-											) : (
+											) : isProcessing ? (
 												<div className="processing">
 													<ShakalMascot className="processing-mascot" alt="" />
 													<p>Шакалим…</p>
 												</div>
+											) : (
+												<p className="preview-error">
+													Не удалось получить результат
+												</p>
 											)}
 										</div>
 									</div>
 								</div>
 							)}
-
+							<div className="sr-only" role="status">
+								{isProcessing
+									? "Обрабатываем изображение"
+									: result
+										? "Изображение готово к скачиванию"
+										: ""}
+							</div>
 							<div className="controls">
 								<ShakalMeter
 									value={intensity}
-									onChange={setIntensity}
-									disabled={isProcessing && !resultUrl}
+									manual={manualSettings !== null}
+									onChange={changeIntensity}
 								/>
-
+								<DegradationControls
+									settings={settings}
+									manual={manualSettings !== null}
+									onChange={setManualSettings}
+									onAutomatic={() => setManualSettings(null)}
+								/>
 								<EffectsPanel
 									effects={effects}
 									onChange={setEffects}
@@ -417,11 +423,9 @@ function App() {
 									onPixelScaleChange={setPixelScale}
 									exportPng={exportPng}
 									onExportPngChange={setExportPng}
-									disabled={isProcessing && !resultUrl}
 								/>
-
 								<div className="actions">
-									{resultUrl && (
+									{result && (
 										<>
 											<button
 												type="button"
@@ -434,12 +438,25 @@ function App() {
 											<button
 												type="button"
 												className={`btn btn--ghost ${compareMode ? "btn--active" : ""}`}
+												aria-pressed={compareMode}
 												onClick={() => setCompareMode((v) => !v)}
 												disabled={isProcessing}
 											>
 												{compareMode ? "2 окна" : "Сравнить"}
 											</button>
 										</>
+									)}
+									{error && (
+										<button
+											type="button"
+											className="btn btn--primary"
+											onClick={() => {
+												setImportError(null);
+												setRetry((v) => v + 1);
+											}}
+										>
+											Попробовать снова
+										</button>
 									)}
 									<button
 										type="button"
@@ -450,34 +467,47 @@ function App() {
 									</button>
 								</div>
 							</div>
-
-							{stats && resultSize && (
+							{result && !isProcessing && (
 								<div className="stats">
 									<div className="stat">
-										<span className="stat-value">{stats.pixelsMurdered}%</span>
-										<span className="stat-label">потеря деталей</span>
-									</div>
-									<div className="stat">
-										<span className="stat-value">{stats.passes}×</span>
-										<span className="stat-label">проходов JPEG</span>
+										<span className="stat-value">
+											{result.stats.gridReduction}%
+										</span>
+										<span className="stat-label">
+											уменьшение сетки
+											<br />
+											{result.stats.gridWidth}×{result.stats.gridHeight}
+										</span>
 									</div>
 									<div className="stat">
 										<span className="stat-value">
-											{Math.round(stats.quality * 100)}%
+											{result.stats.jpegEncodes}×
 										</span>
-										<span className="stat-label">качество</span>
+										<span className="stat-label">JPEG-кодирований</span>
 									</div>
 									<div className="stat">
-										<span className="stat-value">{stats.effectsApplied}</span>
+										<span className="stat-value">
+											{result.stats.jpegQuality === null
+												? "—"
+												: `${result.stats.jpegQuality} / 100`}
+										</span>
+										<span className="stat-label">JPEG-параметр</span>
+									</div>
+									<div className="stat">
+										<span className="stat-value">
+											{result.stats.effectsApplied}
+										</span>
 										<span className="stat-label">эффектов</span>
 									</div>
 									<div className="stat">
-										<span className="stat-value">{stats.pixelScale}×</span>
-										<span className="stat-label">пиксели</span>
+										<span className="stat-value">
+											{result.stats.outputWidth}×{result.stats.outputHeight}
+										</span>
+										<span className="stat-label">размер изображения</span>
 									</div>
 									<div className="stat">
 										<span className="stat-value">
-											{formatBytes(resultSize)}
+											{formatBytes(result.blob.size)}
 										</span>
 										<span className="stat-label">размер файла</span>
 									</div>
@@ -485,9 +515,13 @@ function App() {
 							)}
 						</div>
 					)}
+					{error && (
+						<div className="error-message" role="alert">
+							{error}
+						</div>
+					)}
 				</section>
 			</main>
-
 			<footer className="footer">
 				<ShakalMascot className="footer-mascot" alt="" />
 				<p>Всё в браузере. На сервер ничего не уходит.</p>
@@ -495,5 +529,4 @@ function App() {
 		</div>
 	);
 }
-
 export default App;

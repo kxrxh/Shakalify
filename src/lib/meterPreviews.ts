@@ -1,100 +1,69 @@
-import {
-	intensityToLegacyStage,
-	LEGACY_METER_STAGES,
-	legacyStageToIntensity,
-	shakalifySource,
-} from "./shakalify";
-
-const TILE_W = 128;
-const TILE_H = 156;
-const MASCOT_H = 100;
-
+import { METER_STAGES, meterStageToIntensity } from "./processing";
+import { shakalifySource } from "./shakalify";
+const TILE_W = 128,
+	TILE_H = 156,
+	MASCOT_H = 100;
 export type MeterPreviewTile = {
 	intensity: number;
 	stage: number;
 	src: string;
 };
-
-function loadImage(url: string): Promise<HTMLImageElement> {
-	return new Promise((resolve, reject) => {
-		const img = new Image();
-		img.onload = () => resolve(img);
-		img.onerror = () => reject(new Error("Failed to load mascot"));
-		img.src = url;
-	});
-}
-
-function drawLabel(ctx: CanvasRenderingContext2D, stage: number) {
-	ctx.fillStyle = "#eef1f5";
-	ctx.font = "bold 22px monospace";
-	ctx.textAlign = "center";
-	ctx.textBaseline = "bottom";
-	ctx.fillText(String(stage), TILE_W / 2, TILE_H - 10);
-}
-
-async function renderMeterTile(
-	source: HTMLImageElement,
-	stage: number,
-): Promise<string> {
-	const canvas = document.createElement("canvas");
-	canvas.width = TILE_W;
-	canvas.height = TILE_H;
-	const ctx = canvas.getContext("2d");
-	if (!ctx) throw new Error("Canvas unavailable");
-
-	ctx.fillStyle = "#0a0a0f";
-	ctx.fillRect(0, 0, TILE_W, TILE_H);
-
-	if (stage === 1) {
-		ctx.imageSmoothingEnabled = true;
-		const scale = Math.min(
-			TILE_W / source.naturalWidth,
-			MASCOT_H / source.naturalHeight,
-		);
-		const w = source.naturalWidth * scale;
-		const h = source.naturalHeight * scale;
-		ctx.drawImage(source, (TILE_W - w) / 2, 8 + (MASCOT_H - h) / 2, w, h);
-	} else {
-		const distorted = await shakalifySource(
-			source,
-			TILE_W,
-			MASCOT_H,
-			stage,
-			"meter-legacy",
-		);
-		ctx.drawImage(distorted, 0, 8);
-	}
-
-	drawLabel(ctx, stage);
-
-	return canvas.toDataURL("image/png");
-}
-
-const CACHE_VERSION = 7;
-let cache: { version: number; data: Promise<MeterPreviewTile[]> } | null = null;
-
+const cache = new Map<string, Promise<MeterPreviewTile[]>>();
 export function generateMeterPreviews(
 	sourceUrl: string,
 ): Promise<MeterPreviewTile[]> {
-	if (!cache || cache.version !== CACHE_VERSION) {
-		cache = {
-			version: CACHE_VERSION,
-			data: loadImage(sourceUrl).then(async (img) => {
-				const tiles: MeterPreviewTile[] = [];
-				for (let stage = 1; stage <= LEGACY_METER_STAGES; stage++) {
-					tiles.push({
-						stage,
-						intensity: legacyStageToIntensity(stage),
-						src: await renderMeterTile(img, stage),
-					});
-				}
-				return tiles;
-			}),
-		};
-	}
-	return cache.data;
-}
-
-export function nearestMeterPreviewIntensity(value: number): number {
-	return legacyStageToIntensity(intensityToLegacyStage(value));
+	const cached = cache.get(sourceUrl);
+	if (cached) return cached;
+	const promise = new Promise<HTMLImageElement>((resolve, reject) => {
+		const img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = () => reject(new Error("Failed to load mascot"));
+		img.src = sourceUrl;
+	})
+		.then(async (img) => {
+			const base = document.createElement("canvas");
+			base.width = TILE_W;
+			base.height = MASCOT_H;
+			const ctx = base.getContext("2d");
+			if (!ctx) throw new Error("Canvas unavailable");
+			ctx.fillStyle = "#0a0a0f";
+			ctx.fillRect(0, 0, TILE_W, MASCOT_H);
+			const scale = Math.min(
+				TILE_W / img.naturalWidth,
+				MASCOT_H / img.naturalHeight,
+			);
+			const w = img.naturalWidth * scale,
+				h = img.naturalHeight * scale;
+			ctx.drawImage(img, (TILE_W - w) / 2, (MASCOT_H - h) / 2, w, h);
+			const tiles: MeterPreviewTile[] = [];
+			for (let stage = 1; stage <= METER_STAGES; stage++) {
+				const intensity = meterStageToIntensity(stage);
+				const distorted = await shakalifySource(
+					base,
+					TILE_W,
+					MASCOT_H,
+					intensity,
+				);
+				const tile = document.createElement("canvas");
+				tile.width = TILE_W;
+				tile.height = TILE_H;
+				const tileCtx = tile.getContext("2d");
+				if (!tileCtx) throw new Error("Canvas unavailable");
+				tileCtx.fillStyle = "#0a0a0f";
+				tileCtx.fillRect(0, 0, TILE_W, TILE_H);
+				tileCtx.drawImage(distorted, 0, 8);
+				tileCtx.fillStyle = "#eef1f5";
+				tileCtx.font = "bold 22px monospace";
+				tileCtx.textAlign = "center";
+				tileCtx.fillText(String(stage), TILE_W / 2, TILE_H - 10);
+				tiles.push({ stage, intensity, src: tile.toDataURL("image/png") });
+			}
+			return tiles;
+		})
+		.catch((error: unknown) => {
+			cache.delete(sourceUrl);
+			throw error;
+		});
+	cache.set(sourceUrl, promise);
+	return promise;
 }

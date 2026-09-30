@@ -72,6 +72,7 @@ export function EffectsPanel({
 				<div className="posterize-control">
 					<input
 						id="posterize"
+						aria-label="Постеризация"
 						type="range"
 						min={0}
 						max={POSTERIZE_MAX}
@@ -122,15 +123,16 @@ export function EffectsPanel({
 			</div>
 
 			<div className="effects-row">
-				<span className="effects-row__label">Пиксели</span>
+				<span className="effects-row__label">Масштаб экспорта</span>
 				<fieldset className="segmented">
-					<legend className="segmented__legend">Масштаб пикселей</legend>
+					<legend className="segmented__legend">Масштаб экспорта</legend>
 					{[1, 2, 3].map((scale) => (
 						<button
 							key={scale}
 							type="button"
 							className={`segmented__btn ${pixelScale === scale ? "segmented__btn--active" : ""}`}
 							onClick={() => onPixelScaleChange(scale)}
+							aria-pressed={pixelScale === scale}
 							disabled={disabled}
 						>
 							{scale}×

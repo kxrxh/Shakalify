@@ -1,4 +1,4 @@
-import { getProcessStrength, normalizeIntensity } from "./shakalify";
+import { getProcessStrength, normalizeIntensity } from "./processing";
 
 export const POSTERIZE_MAX = 100;
 
@@ -45,12 +45,11 @@ function applyPixelEffects(
 	canvas: HTMLCanvasElement,
 	level: number,
 	effects: EffectOptions,
-	minDimension?: number,
 ): void {
 	const ctx = canvas.getContext("2d");
 	if (!ctx) return;
 
-	const strength = getProcessStrength(level, minDimension);
+	const strength = getProcessStrength(level);
 	const { width, height } = canvas;
 	const imageData = ctx.getImageData(0, 0, width, height);
 	const d = imageData.data;
@@ -86,15 +85,11 @@ function applyPixelEffects(
 	ctx.putImageData(imageData, 0, 0);
 }
 
-function applyScanlines(
-	canvas: HTMLCanvasElement,
-	level: number,
-	minDimension?: number,
-): void {
+function applyScanlines(canvas: HTMLCanvasElement, level: number): void {
 	const ctx = canvas.getContext("2d");
 	if (!ctx) return;
 
-	const strength = getProcessStrength(level, minDimension);
+	const strength = getProcessStrength(level);
 	const { width, height } = canvas;
 	const gap = Math.max(2, Math.floor(5 - strength * 3));
 	const alpha = 0.08 + strength * 0.35;
@@ -117,32 +112,14 @@ export function applyEffects(
 	canvas: HTMLCanvasElement,
 	level: number,
 	effects: EffectOptions,
-	minDimension?: number,
 ): void {
 	const intensity = normalizeIntensity(level);
 
 	if (effects.posterize > 0 || effects.noise) {
-		applyPixelEffects(canvas, intensity, effects, minDimension);
+		applyPixelEffects(canvas, intensity, effects);
 	}
 
 	if (effects.scanlines) {
-		applyScanlines(canvas, intensity, minDimension);
+		applyScanlines(canvas, intensity);
 	}
-}
-
-export function upscaleNearest(
-	canvas: HTMLCanvasElement,
-	scale: number,
-): HTMLCanvasElement {
-	if (scale <= 1) return canvas;
-
-	const scaled = document.createElement("canvas");
-	scaled.width = canvas.width * scale;
-	scaled.height = canvas.height * scale;
-	const ctx = scaled.getContext("2d");
-	if (!ctx) return canvas;
-
-	ctx.imageSmoothingEnabled = false;
-	ctx.drawImage(canvas, 0, 0, scaled.width, scaled.height);
-	return scaled;
 }
